@@ -1,0 +1,16 @@
+# Ignore environment variables
+.env
+.env.*
+
+# Python caches
+__pycache__/
+*.pyc
+venv/
+env/
+.venv/
+
+# Streamlit config
+.streamlit/
+
+# macOS
+.DS_Store
