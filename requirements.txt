@@ -1,5 +1,5 @@
 yfinance
-pandas-ta
+pandas_ta
 tensorflow
 gymnasium
 transformers
