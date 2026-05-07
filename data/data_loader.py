@@ -51,6 +51,51 @@ class DataLoader:
         """
         logger.info(f"Streaming latest {lookback_window} periods of {interval} data for {self.tickers}...")
         
+        # 1. ATTEMPT NATIVE METATRADER 5 DATA SOURCING
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        mt5_login, mt5_pass, mt5_server = os.getenv("MT5_LOGIN"), os.getenv("MT5_PASS"), os.getenv("MT5_SERVER")
+        
+        if mt5_login and mt5_pass and mt5_server:
+            try:
+                import MetaTrader5 as mt5
+                if mt5.initialize(login=int(mt5_login), password=mt5_pass, server=mt5_server):
+                    df_dict = {}
+                    tf_map = {'1m': mt5.TIMEFRAME_M1, '5m': mt5.TIMEFRAME_M5, '15m': mt5.TIMEFRAME_M15, '1h': mt5.TIMEFRAME_H1, '1d': mt5.TIMEFRAME_D1}
+                    mt5_tf = tf_map.get(interval, mt5.TIMEFRAME_M1)
+                    
+                    for ticker in self.tickers:
+                        # Ensure robust mapping from env strings to MT5 symbols
+                        symbol_map = {
+                            'GC=F': 'XAUUSD',
+                            'SI=F': 'XAGUSD',
+                            'BTC-USD': 'BTCUSD',
+                            'XAU-USD': 'XAUUSD',
+                            'XAG-USD': 'XAGUSD',
+                            'XAUUSD=X': 'XAUUSD',
+                            'XAGUSD=X': 'XAGUSD'
+                        }
+                        symbol = symbol_map.get(ticker, ticker.replace("-", "").replace("=X", ""))
+                        
+                        rates = mt5.copy_rates_from_pos(symbol, mt5_tf, 0, lookback_window)
+                        
+                        if rates is not None and len(rates) > 0:
+                            df_dict[ticker] = [r[4] for r in rates] # index 4 is the 'close' price
+                        else:
+                            logger.error(f"MT5 returned no data for {symbol}.")
+                    
+                    if len(df_dict) == len(self.tickers):
+                        final_df = pd.DataFrame(df_dict)
+                        if len(final_df) >= lookback_window:
+                            logger.info("Successfully fetched live streaming data from native MT5 terminal.")
+                            return final_df
+            except ImportError:
+                logger.warning("MetaTrader5 package missing. Falling back to yfinance.")
+            except Exception as e:
+                logger.warning(f"MT5 Native Data sourcing failed: {e}. Falling back to yfinance.")
+                
+        # 2. FALLBACK TO YFINANCE
         # '5d' period ensures enough data points are grabbed even across low volume or weekend hours
         try:
             data = yf.download(self.tickers, period='5d', interval=interval, progress=False)
@@ -65,7 +110,8 @@ class DataLoader:
                     data.columns = self.tickers
                     
             # Return specifically the final tail end rows
-            latest_rows = data.dropna(axis=0, how='any')
+            # Use ffill and bfill to prevent misaligned 1m timestamps between multiple futures from dropping rows
+            latest_rows = data.ffill().bfill().dropna(axis=0, how='any')
             if len(latest_rows) >= lookback_window:
                 return latest_rows.iloc[-lookback_window:]
             else:

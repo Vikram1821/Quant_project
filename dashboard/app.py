@@ -189,13 +189,7 @@ with tab2:
             line=dict(color='#00ffcc', width=3)
         ))
         
-        # Expected Return target line (simulated linear slope for tracking expectations)
-        expected_return_line = np.linspace(0, 0.05 * len(pct_change), len(pct_change))
-        fig_port.add_trace(go.Scatter(
-            x=pd.to_datetime(port_df['Timestamp']), y=expected_return_line, 
-            mode='lines', name='Expected Return', 
-            line=dict(color='red', width=2)
-        ))
+
         
         fig_port.update_layout(
             height=400, 
